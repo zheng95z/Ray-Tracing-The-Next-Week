@@ -6,6 +6,7 @@
 // *(ch03) 原书中没有给出main.cpp的修改内容，见random_scene()方法的最后一行
 // *(ch03) 添加统计程序运行时间功能 使用bvh前:370s  使用后:117s
 // *(ch04) 修改了贴图的颜色为 HuaweiP30Pro赤茶橘同款橘色
+// *(ch09) 裁剪颜色值（0，255）
 //*************************************
 
 // stb图像库 from https://github.com/nothings/stb.git
@@ -27,6 +28,10 @@
 #include "box.h"
 #include "instance.h"
 #include "volume.h"
+
+float clip(float n, float lower, float upper) {
+	return std::max(lower, std::min(n, upper));
+}
 
 vec3 color(const ray& r, hittable *world, int depth) {
 	hit_record rec;
@@ -236,9 +241,9 @@ int main() {
 			// gammar 矫正
 			col = vec3(sqrt(col[0]), sqrt(col[1]), sqrt(col[2]));
 			// 写入图像数据 data[y*width*channels + x*channels + index]
-			data[(ny - j - 1)*nx*3 + 3 * i + 0] = int(255.99*col[0]);
-			data[(ny - j - 1)*nx*3 + 3 * i + 1] = int(255.99*col[1]);
-			data[(ny - j - 1)*nx*3 + 3 * i + 2] = int(255.99*col[2]);
+			data[(ny - j - 1)*nx*3 + 3 * i + 0] = int(clip(255.99*col[0], 0.0f, 255.0f));
+			data[(ny - j - 1)*nx*3 + 3 * i + 1] = int(clip(255.99*col[1], 0.0f, 255.0f));
+			data[(ny - j - 1)*nx*3 + 3 * i + 2] = int(clip(255.99*col[2], 0.0f, 255.0f));
 		}
 		// print渲染进度
 		std::cout << (ny - j) / float(ny) * 100.0f << "%\n";
