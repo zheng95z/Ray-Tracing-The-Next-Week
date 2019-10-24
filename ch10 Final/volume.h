@@ -1,15 +1,17 @@
 #pragma once
 #include "hittable.h"
-#include "texture.h"
 #include "material.h"
+#include "texture.h"
+
+#include <float.h>
+
 
 class constant_medium : public hittable {
 public:
 	constant_medium(hittable *b, float d, texture *a) : boundary(b), density(d) {
 		phase_function = new isotropic(a);
 	}
-	virtual bool hit(
-		const ray& r, float t_min, float t_max, hit_record& rec) const;
+	virtual bool hit(const ray& r, float t_min, float t_max, hit_record& rec) const;
 	virtual bool bounding_box(float t0, float t1, aabb& box) const {
 		return boundary->bounding_box(t0, t1, box);
 	}
@@ -18,8 +20,8 @@ public:
 	material *phase_function;
 };
 
-bool constant_medium::hit(const ray& r, float t_min, float t_max, hit_record& rec)
-const {
+
+bool constant_medium::hit(const ray& r, float t_min, float t_max, hit_record& rec) const {
 
 	// Print occasional samples when debugging. To enable, set enableDebug true.
 	const bool enableDebug = false;
@@ -32,19 +34,15 @@ const {
 
 			if (debugging) std::cerr << "\nt0 t1 " << rec1.t << " " << rec2.t << '\n';
 
-			if (rec1.t < t_min)
-				rec1.t = t_min;
-
-			if (rec2.t > t_max)
-				rec2.t = t_max;
+			if (rec1.t < t_min) rec1.t = t_min;
+			if (rec2.t > t_max) rec2.t = t_max;
 
 			if (rec1.t >= rec2.t)
 				return false;
-
 			if (rec1.t < 0)
 				rec1.t = 0;
 
-			float distance_inside_boundary = (rec2.t - rec1.t)*r.direction().length();
+			float distance_inside_boundary = (rec2.t - rec1.t) * r.direction().length();
 			float hit_distance = -(1 / density) * log((rand() % 100 / float(100)));
 
 			if (hit_distance < distance_inside_boundary) {

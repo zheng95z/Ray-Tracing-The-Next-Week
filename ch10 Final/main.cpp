@@ -6,6 +6,8 @@
 // *(ch03) 原书中没有给出main.cpp的修改内容，见random_scene()方法的最后一行
 // *(ch03) 添加统计程序运行时间功能 使用bvh前:370s  使用后:117s
 // *(ch04) 修改了贴图的颜色为 HuaweiP30Pro赤茶橘同款橘色
+// *(ch09) 裁剪颜色值（0，255）
+// *(ch10) 添加了c++线程池
 //*************************************
 
 // stb图像库 from https://github.com/nothings/stb.git
@@ -14,7 +16,7 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 #include <time.h>
-
+#include "fixed_thread_pool.h"
 #include "hittable_list.h"
 #include "sphere.h"
 #include "camera.h"
@@ -27,6 +29,15 @@
 #include "box.h"
 #include "instance.h"
 #include "volume.h"
+#include <atomic>
+#include <iostream>
+#include <cmath>
+#include <cfloat>
+#include <algorithm>
+
+float clip(float n, float lower, float upper) {
+	return std::max(lower, std::min(n, upper));
+}
 
 vec3 color(const ray& r, hittable *world, int depth) {
 	hit_record rec;
@@ -34,16 +45,13 @@ vec3 color(const ray& r, hittable *world, int depth) {
 		ray scattered;
 		vec3 attenuation;
 		vec3 emitted = rec.mat_ptr->emitted(rec.u, rec.v, rec.p);
-		if (depth < 50 && rec.mat_ptr->scatter(r, rec, attenuation, scattered)) {
+		if (depth < 50 && rec.mat_ptr->scatter(r, rec, attenuation, scattered))
 			return emitted + attenuation * color(scattered, world, depth + 1);
-		}
-		else {
+		else
 			return emitted;
-		}
-	} 
-	else {
-		return vec3(0, 0, 0);
 	}
+	else
+		return vec3(0, 0, 0);
 }
 
 //scene final
@@ -69,8 +77,8 @@ hittable *final() {
 	}
 	int l = 0;
 	list[l++] = new bvh_node(boxlist, b, 0, 1);
-	material *light = new diffuse_light(new constant_texture(vec3(7, 7, 7)));
-	list[l++] = new xz_rect(123, 423, 147, 412, 554, light);
+	material *light = new diffuse_light(new constant_texture(vec3(16, 16, 16)));
+	list[l++] = new xz_rect(123, 423, 147, 412, 700, light);
 	vec3 center(400, 400, 200);
 	list[l++] = new moving_sphere(center, center + vec3(30, 0, 0),
 		0, 1, 50, new lambertian(new constant_texture(vec3(0.7, 0.3, 0.1))));
@@ -98,17 +106,17 @@ hittable *final() {
 	}
 	list[l++] = new translate(new rotate_y(
 		new bvh_node(boxlist2, ns, 0.0, 1.0), 15), vec3(-100, 270, 395));
-	return new hittable_list(list, l);
+	return new bvh_node(list, l, 0.0, 1.0);
 }
 
 //scene volume
-hittable *cornell_smoke() {
+hittable* cornell_smoke() {
 	hittable **list = new hittable*[8];
 	int i = 0;
+	material *light = new diffuse_light(new constant_texture(vec3(7, 7, 7)));
 	material *red = new lambertian(new constant_texture(vec3(0.65, 0.05, 0.05)));
 	material *white = new lambertian(new constant_texture(vec3(0.73, 0.73, 0.73)));
 	material *green = new lambertian(new constant_texture(vec3(0.12, 0.45, 0.15)));
-	material *light = new diffuse_light(new constant_texture(vec3(7, 7, 7)));
 
 	list[i++] = new flip_normals(new yz_rect(0, 555, 0, 555, 555, green));
 	list[i++] = new yz_rect(0, 555, 0, 555, 0, red);
@@ -116,25 +124,16 @@ hittable *cornell_smoke() {
 	list[i++] = new flip_normals(new xz_rect(0, 555, 0, 555, 555, white));
 	list[i++] = new xz_rect(0, 555, 0, 555, 0, white);
 	list[i++] = new flip_normals(new xy_rect(0, 555, 0, 555, 555, white));
-
-	hittable *b1 = new translate(
-		new rotate_y(new box(vec3(0, 0, 0), vec3(165, 165, 165), white), -18),
-		vec3(130, 0, 65));
-	hittable *b2 = new translate(
-		new rotate_y(new box(vec3(0, 0, 0), vec3(165, 330, 165), white), 15),
-		vec3(265, 0, 295));
-
-	list[i++] = new constant_medium(
-		b1, 0.01, new constant_texture(vec3(1.0, 1.0, 1.0)));
-	list[i++] = new constant_medium(
-		b2, 0.01, new constant_texture(vec3(0.0, 0.0, 0.0)));
-
-	return new bvh_node(list, i, 0.0, 1.0);
+	hittable *b1 = new translate(new rotate_y(new box(vec3(0, 0, 0), vec3(165, 165, 165), white), -18), vec3(130, 0, 65));
+	hittable *b2 = new translate(new rotate_y(new box(vec3(0, 0, 0), vec3(165, 330, 165), white), 15), vec3(265, 0, 295));
+	list[i++] = new constant_medium(b1, 0.01, new constant_texture(vec3(1.0, 1.0, 1.0)));
+	list[i++] = new constant_medium(b2, 0.01, new constant_texture(vec3(0.0, 0.0, 0.0)));
+	return new bvh_node(list, i, 0.0f, 1.0f);
 }
 
 //scene rec and light
 hittable* cornell_box() {
-	hittable **list = new hittable*[6];
+	hittable **list = new hittable*[8];
 	int i = 0;
 	material *red = new lambertian(new constant_texture(vec3(0.65, 0.05, 0.05)));
 	material *white = new lambertian(new constant_texture(vec3(0.73, 0.73, 0.73)));
@@ -143,7 +142,7 @@ hittable* cornell_box() {
 
 	list[i++] = new flip_normals(new yz_rect(0, 555, 0, 555, 555, green));
 	list[i++] = new yz_rect(0, 555, 0, 555, 0, red);
-	list[i++] = new xz_rect(213, 343, 227, 332, 554, light);
+	list[i++] = new xz_rect(213, 343, 227, 332, 555, light);
 	list[i++] = new flip_normals(new xz_rect(0, 555, 0, 555, 555, white));
 	list[i++] = new xz_rect(0, 555, 0, 555, 0, white);
 	list[i++] = new flip_normals(new xy_rect(0, 555, 0, 555, 555, white));
@@ -247,23 +246,60 @@ hittable* random_scene()
 	return new bvh_node(list, i, 0.0f, 1.0f); //使用bvh
 }
 
+// width, height, channels of image
+int nx = 1920; // width
+int ny = 1080; // height
+int channels = 3;
+int ns = 8192; // sample count
+unsigned char *data = nullptr;
+std::atomic<int> jobs_done{ 0 };
+std::atomic<int> next_job{ 0 };
+camera *cam;
+hittable *world;
+// 统计程序运行时间
+clock_t start_time, end_time;
+
+int trace() {
+	do {
+		int y = next_job++;
+		int index = ((ny - 1) - y) * nx * 3;
+		for (int i = 0; i < nx; i++) {
+			vec3 col(0, 0, 0);
+			for (int k = 0; k < ns; k++) {
+				float u = float(i + (rand() % 100 / float(100))) / float(nx);
+				float v = float(y + (rand() % 100 / float(100))) / float(ny);
+				// 确定 ray r
+				ray r = cam->get_ray(u, v);
+				// 累加 ray r 射入场景 world 后，返回的颜色
+				col += color(r, world, 0);
+			}
+			col /= float(ns);
+			// gammar 矫正
+			col = vec3(sqrt(col[0]), sqrt(col[1]), sqrt(col[2]));
+			if (std::isnan(col.x()) || std::isnan(col.y()) || std::isnan(col.z()))
+				std::cout << "NaN" << std::endl;
+			/*if (col.x() < 0 || col.y() < 0 || col.z() < 0)
+				std::cout << "nagtive" << std::endl;*/
+			data[index++] = int(clip(255.99*col[0], 0.0f, 255.0f));
+			data[index++] = int(clip(255.99*col[1], 0.0f, 255.0f));
+			data[index++] = int(clip(255.99*col[2], 0.0f, 255.0f));
+		}
+		++jobs_done;
+		return jobs_done;
+	} while (next_job < ny);
+};
 
 int main() {
-	// 统计程序运行时间
-	clock_t start_time, end_time;
+	fixed_thread_pool pool(12);
+	std::vector< std::future<int> > results;
 	start_time = clock();
 	
-	// width, height, channels of image
-	int nx = 1000; // width
-	int ny = 1000; // height
-	int channels = 3;
-	int ns = 64; // sample count
 
 	// 存储图像数据
-	unsigned char *data = new unsigned char[nx*ny*channels];
+	data = new unsigned char[nx*ny*channels];
 	
 	// 场景相关
-	hittable *world = final();
+	world = final();
 	// camera
 	//vec3 lookfrom(278, 278, -800);
 	vec3 lookfrom(478, 278, -600);
@@ -272,39 +308,23 @@ int main() {
 	float aperture = 0.0;
 	float vfov = 40.0;
 
-	camera cam(lookfrom, lookat, vec3(0, 1, 0), vfov, float(nx) / float(ny),
+	cam = new camera(lookfrom, lookat, vec3(0, 1, 0), vfov, float(nx) / float(ny),
 		aperture, dist_to_focus, 0.0, 1.0);
 
 	// 循环遍历图像nx*ny中的每个像素
-	for (int j = ny - 1; j >= 0; j--) {
-		for (int i = 0; i < nx; i++) {
-			vec3 col(0,0,0);
-			// 采样 ns 次
-			for (int k = 0; k < ns; k++) {
-				float u = float(i + (rand() % 100 / float(100))) / float(nx);
-				float v = float(j + (rand() % 100 / float(100))) / float(ny);
-				// 确定 ray r
-				ray r = cam.get_ray(u, v);
-				// 累加 ray r 射入场景 world 后，返回的颜色
-				col += color(r, world, 0);
-			}
-			col /= float(ns);
-			// gammar 矫正
-			col = vec3(sqrt(col[0]), sqrt(col[1]), sqrt(col[2]));
-			// 写入图像数据 data[y*width*channels + x*channels + index]
-			data[(ny - j - 1)*nx*3 + 3 * i + 0] = int(255.99*col[0]);
-			data[(ny - j - 1)*nx*3 + 3 * i + 1] = int(255.99*col[1]);
-			data[(ny - j - 1)*nx*3 + 3 * i + 2] = int(255.99*col[2]);
-		}
-		// print渲染进度
-		std::cout << (ny - j) / float(ny) * 100.0f << "%\n";
+	for (int j = 0; j < ny - 1; j++) {
+		results.emplace_back(pool.execute(trace));
 	}
+	for (auto && result : results) {
+		std::cout << (result.get()) / float(ny) * 100.0f << "%\n";
+	}
+	stbi_write_png("book2-ch10.png", nx, ny, channels, data, 0);
 	end_time = clock();
 	std::cout << "Total time : " << (double)(end_time - start_time) / CLOCKS_PER_SEC << "s" << std::endl;
 	// 写出png图片
-	stbi_write_png("book2-ch10.png", nx, ny, channels, data, 0);
-
 	std::cout << "Completed.\n";
+	// 写入图像数据 data[y*width*channels + x*channels + index]
 	system("PAUSE");
 	return 0;
 }
+
